@@ -1,5 +1,5 @@
-#include <iostream>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -8,10 +8,10 @@
 #include <netdb.h>
 
 
-// recv(), send(), close()
+/* receive data from a client socket */
 void handle(int new_sock) {
     ssize_t bytes_read;
-    const int BUFF_SIZE = 65536;
+    const int BUFF_SIZE = 4096;
     char buffer[BUFF_SIZE];
     char delim[] = "|";
 
