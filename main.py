@@ -3,12 +3,15 @@ This module is for simulating the sending of data from the embedded systems
 team.
 """
 
+__author__ = "Saveliy Yusufov"
+__email__ = "sy2685@columbia.edu"
+__version__ = "1.0"
+
 import sys
 import socket
 import logging
 import threading
 from multiprocessing import Queue
-from concurrent import futures
 
 
 logger = logging.getLogger(__name__)
@@ -86,8 +89,6 @@ class Client:
             data = "{}|".format(value)
             data = data.encode()
             self.sendall(data)
-            # with futures.ThreadPoolExecutor(max_workers=1) as executor:
-                # executor.submit(self.sendall, data)
 
     def sendall(self, data):
         """Wraps socket module's `sendall` function"""
