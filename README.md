@@ -7,7 +7,7 @@ All of the code and tests implemented by the computer science team from Summer
 ### Prerequisites
 
 * `clang` or `gcc`
-* `Python3`
+* `Python 3.6`
 
 
 ### Installing
@@ -20,12 +20,14 @@ make
 
 ### Test
 
-You can quickly test the server by following the commands listed below.
-
-Note that the client (implemented in Python) automatically attempts to connect
-via port 10000.
+Run the server, which will listen on port 10000:
 
 ```Bash
 ./server 10000
+```
+
+Run the client (in a different terminal):
+
+```Bash
 python test/main.py test/bunny.obj
 ```
