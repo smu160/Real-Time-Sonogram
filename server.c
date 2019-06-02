@@ -2,16 +2,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <netdb.h>
+
+
+void die(const char* str) {
+    perror(str);
+    exit(1);
+}
 
 
 /* receive data from a client socket */
 void handle(int new_sock) {
     ssize_t bytes_read;
-    const int BUFF_SIZE = 4096;
+    const int BUFF_SIZE = 65536; // 2^16
     char buffer[BUFF_SIZE];
     char delim[] = "|";
 
@@ -35,68 +39,55 @@ int main(int argc, char** argv) {
         exit(1);
     }
 
-    int sock; // Socket file descriptor
-    char* port = argv[1]; // Port to listen for clients on
-    struct addrinfo hints;
-    struct addrinfo* res;
-    int reuseaddr = 1; // Set to true
+    int server_port = atoi(argv[1]);
+    struct sockaddr_in serv_addr; // socket interent address of server
 
-    // Get the address info
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
+    // Construct local address structure
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY); // any network interface
+    serv_addr.sin_port = htons(server_port);
 
-    if (getaddrinfo(NULL, port, &hints, &res) != 0) {
-        perror("getaddrinfo");
-        return 1;
+    int server_sock;
+    if ((server_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        die("socket failed");
     }
 
-    // Create the socket
-    sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock == -1) {
-        perror("socket");
-        return 1;
+    // Bind the socket
+    if (bind(server_sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        die("bind failed");
     }
 
-    // Enable the socket to reuse the address
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof(int)) == -1) {
-        perror("setsockopt");
-        return 1;
+    // Amount of pending connections to queue
+    const short backlog = 1;
+
+    // Start listening for incoming connections
+    if (listen(server_sock, backlog) < 0) {
+        die("listen failed");
     }
 
-    // Bind to the address
-    if (bind(sock, res->ai_addr, res->ai_addrlen) == -1) {
-        perror("bind");
-        return 1;
-    }
-
-    // Listen for clients
-    if (listen(sock, 5) == -1) {
-        perror("listen");
-        return 1;
-    }
-
-    freeaddrinfo(res);
-
-    socklen_t size;
+    int client_sock;
     struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
 
     // Main loop
     while (1) {
-        size = sizeof(client_addr);
-        int new_sock = accept(sock, (struct sockaddr*) &client_addr, &size);
+        client_sock = accept(server_sock, (struct sockaddr*) &client_addr, &client_len);
 
-        if (new_sock == -1) {
-            perror("accept");
+        if (client_sock < 0) {
+            die("accept failed");
         }
         else {
-            printf("Client connected from %s on port %d\n",
-                    inet_ntoa(client_addr.sin_addr), htons(client_addr.sin_port));
-            handle(new_sock);
+            printf("Connection From: %s:%d (%d)\n",
+            inet_ntoa(client_addr.sin_addr), // address as dotted quad
+            ntohs(client_addr.sin_port),     // the port in host order
+            client_sock);
+
+            handle(client_sock);
         }
     }
 
-    close(sock);
+    close(server_sock);
 
     return 0;
 }
