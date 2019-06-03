@@ -16,7 +16,7 @@ LDFLAGS = -g
 # List the libraries you need to link with in LDLIBS
 # e.g., use "-lm" for the math library
 
-# LDLIBS =
+LDLIBS = -pthread
 
 server: server.o
 

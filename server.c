@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <pthread.h>
 
 
 void die(const char* str) {
@@ -13,13 +14,15 @@ void die(const char* str) {
 
 
 /* receive data from a client socket */
-void handle(int new_sock) {
+void* handle(void* new_sock) {
     ssize_t bytes_read;
     const int BUFF_SIZE = 65536; // 2^16
     char buffer[BUFF_SIZE];
     char delim[] = "|";
 
-    while ((bytes_read = recv(new_sock, buffer, sizeof(buffer)-1, 0)) > 0) {
+    printf("New client handler thread started\n");
+
+    while ((bytes_read = recv(*(int*)new_sock, buffer, sizeof(buffer)-1, 0)) > 0) {
         buffer[bytes_read] = '\0';
         char *ptr = strtok(buffer, delim);
 
@@ -28,8 +31,50 @@ void handle(int new_sock) {
             ptr = strtok(NULL, delim);
         }
     }
+
     fprintf(stderr, "Closing connection to client\n");
-    close(new_sock);
+    close(*(int*)new_sock);
+
+    return NULL;
+}
+
+
+void* listener(void* server_sock) {
+    fprintf(stderr, "Listener thread started!\n");
+
+    // Amount of pending connections to queue
+    const short backlog = 10;
+
+    // Start listening for incoming connections
+    if (listen(*(int*) server_sock, backlog) < 0) {
+        die("listen failed");
+    }
+
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    while (1) {
+        int client_sock = accept(*(int*)server_sock, (struct sockaddr*) &client_addr, &client_len);
+
+        if (client_sock < 0) {
+            die("accept failed");
+        }
+
+        printf("Connection From: %s:%d (%d)\n",
+        inet_ntoa(client_addr.sin_addr), // address as dotted quad
+        ntohs(client_addr.sin_port),     // the port in host order
+        client_sock);
+
+        pthread_t client_thread;
+        int result = pthread_create(&client_thread, NULL, handle, (void*)&client_sock);
+
+        if (result < 0) {
+            die("Could not create thread");
+        }
+
+    }
+
+    return NULL;
 }
 
 
@@ -53,40 +98,25 @@ int main(int argc, char** argv) {
         die("socket failed");
     }
 
+    int enable = 1;
+    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) < 0) {
+        die("setsockopt(SO_REUSEADDR) failed");
+    }
+
     // Bind the socket
     if (bind(server_sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         die("bind failed");
     }
 
-    // Amount of pending connections to queue
-    const short backlog = 1;
+    // struct arg_struct args;
+    pthread_t listener_thread;
+    int result = pthread_create(&listener_thread, NULL, listener, (void*) &server_sock);
 
-    // Start listening for incoming connections
-    if (listen(server_sock, backlog) < 0) {
-        die("listen failed");
+    if (result < 0) {
+        die("Could not create thread");
     }
 
-    int client_sock;
-    struct sockaddr_in client_addr;
-    socklen_t client_len = sizeof(client_addr);
-
-    // Main loop
-    while (1) {
-        client_sock = accept(server_sock, (struct sockaddr*) &client_addr, &client_len);
-
-        if (client_sock < 0) {
-            die("accept failed");
-        }
-        else {
-            printf("Connection From: %s:%d (%d)\n",
-            inet_ntoa(client_addr.sin_addr), // address as dotted quad
-            ntohs(client_addr.sin_port),     // the port in host order
-            client_sock);
-
-            handle(client_sock);
-        }
-    }
-
+    pthread_join(listener_thread, NULL);
     close(server_sock);
 
     return 0;
