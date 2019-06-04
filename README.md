@@ -1,4 +1,4 @@
-# Computer Science Team 2019
+# Computer Science Team
 
 All of the code and tests implemented by the computer science team from Summer
 2019 and onwards.
@@ -13,12 +13,13 @@ All of the code and tests implemented by the computer science team from Summer
 ### Installing
 
 ```Bash
+git clone https://github.com/ColumbiaOpenSourceUltrasound/CS_Team.git
 cd CS_Team
-make
+make all
 ```
 
 
-### Test
+### Testing
 
 Run the server, which will listen on port 10000:
 
