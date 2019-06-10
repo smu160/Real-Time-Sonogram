@@ -5,17 +5,13 @@ CXX = g++
 INCLUDES = include
 
 # Compilation options:
-CFLAGS   = -Wall $(INCLUDES)
+CFLAGS   = -std=c++17 -Wall $(INCLUDES)
 CXXFLAGS = -Wall $(INCLUDES)
 
 # Linking options:
-# -g for debugging info
-
 LDFLAGS = -L lib
 
-# List the libraries you need to link with in LDLIBS
-# e.g., use "-lm" for the math library
-
+# Libraries needed to link with
 LDLIBS = -lSDL2 -lm
 
 
