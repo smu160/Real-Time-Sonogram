@@ -5,8 +5,18 @@
 
 #include <SDL2/SDL.h>
 
+#include <fstream>
+#include <string>
+#include <vector>
+
 #define SCREEN_WIDTH 500
 #define SCREEN_HEIGHT 500
+
+
+struct tuple {
+    int x;
+    int y;
+};
 
 
 SDL_Point polar_to_cart(double r, double theta) {
@@ -17,10 +27,19 @@ SDL_Point polar_to_cart(double r, double theta) {
 }
 
 
+SDL_Point cart_to_screen(SDL_Point cart_pt) {
+    SDL_Point screen_pt;
+    screen_pt.x = cart_pt.x + SCREEN_WIDTH/2;
+    screen_pt.y = SCREEN_HEIGHT/2 - cart_pt.y;
+    return screen_pt;
+}
+
+
 /* Draw a line from the start point, `p1` to the end point, `p2`
  * Renders the line by drawing pixels from `p1` to `p2`
  */
-void draw_line(SDL_Renderer* renderer, SDL_Point p1, SDL_Point p2) {
+void draw_line(SDL_Renderer* renderer, SDL_Point p1, SDL_Point p2, std::vector<tuple> &vect, int s, int e) {
+
     int x0 = p1.x;
     int y0 = p1.y;
     int x1 = p2.x;
@@ -34,9 +53,16 @@ void draw_line(SDL_Renderer* renderer, SDL_Point p1, SDL_Point p2) {
     int e2;
 
     int color;
+    tuple temp;
 
     while (1) {
-        color = rand() % 255;
+        if (s <= e) {
+            temp = vect[s++];
+            color = temp.y;
+        }
+        else {
+            color = 40;
+        }
 
         SDL_SetRenderDrawColor(renderer, color, color, color, 255);
         SDL_RenderDrawPoint(renderer, x0, y0);
@@ -55,17 +81,9 @@ void draw_line(SDL_Renderer* renderer, SDL_Point p1, SDL_Point p2) {
             err += dx;
             y0 += sy;
         }
-
     }
+
 }
-
-
-SDL_Point cart_to_screen(SDL_Point cart_pt) {
-    SDL_Point screen_pt;
-    screen_pt.x = cart_pt.x + SCREEN_WIDTH/2;
-    screen_pt.y = SCREEN_HEIGHT/2 - cart_pt.y;
-    return screen_pt;
-    }
 
 
 double random_angle(double alpha, double beta) {
@@ -77,45 +95,74 @@ double random_angle(double alpha, double beta) {
 
 
 int main(int argc, char** argv) {
+    char* filename = argv[1];
+    std::ifstream file(filename);
+    std::vector<tuple> vector_of_tuples;
+
+    if (file.is_open()) {
+        std::string line;
+        tuple temp;
+
+        while (file) {
+            file >> temp.x >> temp.y;
+
+            if (file) {
+                vector_of_tuples.push_back(temp);
+            }
+            else {
+                file.close();
+            }
+        }
+    }
+
     double const PI = 3.145926;
     double const X_ORIGIN = SCREEN_WIDTH / 2;
     double const Y_ORIGIN = 0;
     double const LEFT_LIMIT = 7*PI / 6;
     double const RIGHT_LIMIT = 11*PI / 6;
 
-    if (SDL_Init(SDL_INIT_VIDEO) == 0) {
+    if (SDL_Init(SDL_INIT_EVERYTHING) == 0) {
         SDL_Window* window = NULL;
         SDL_Renderer* renderer = NULL;
 
         if (SDL_CreateWindowAndRenderer(SCREEN_WIDTH, SCREEN_HEIGHT, 0, &window, &renderer) == 0) {
             SDL_bool done = SDL_FALSE;
-
             SDL_Point start_point;
             start_point.x = X_ORIGIN;
             start_point.y = Y_ORIGIN;
 
             SDL_Point end_point;
 
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
             SDL_RenderClear(renderer);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderPresent(renderer);
+
+            int prev_tx = 0;
+            tuple temp;
 
             while (!done) {
                 SDL_Event event;
 
-                for (int i = 0; i < 50; i++) {
-                    double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
-                    SDL_Point cart_point = polar_to_cart(250, theta);
-                    end_point = cart_to_screen(cart_point);
+                for (int i = 0; i < vector_of_tuples.size(); i++) {
+                    temp = vector_of_tuples[i];
 
-                    // std::cout << "Recvd cartesian pt: "<< "(" << cart_point.x << ", " << cart_point.y << ") --> ";
-                    // std::cout << "as screen pt: "<< "(" << end_point.x << ", " << end_point.y << ")" << std::endl;
-                    draw_line(renderer, start_point, end_point);
-                    SDL_RenderPresent(renderer);
+                    if (temp.x == 0 && i > 0) {
+                        double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
+                        int distance = 250; // i - prev_tx;
+                        SDL_Point cart_point = polar_to_cart(distance, theta);
+                        end_point = cart_to_screen(cart_point);
+
+                        draw_line(renderer, start_point, end_point, vector_of_tuples, prev_tx, i);
+                        SDL_RenderPresent(renderer);
+                        prev_tx = i;
+                        SDL_Delay(0);
+                    }
+
+
                 }
 
                 SDL_RenderPresent(renderer);
-                usleep(10000);
-
+                SDL_Delay(0);
 
                 while (SDL_PollEvent(&event)) {
                     if (event.type == SDL_QUIT) {
