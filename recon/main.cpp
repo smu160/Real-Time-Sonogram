@@ -1,7 +1,6 @@
 #include <stdlib.h> // Needed for: srand, rand
 #include <iostream>
 #include <math.h>
-#include <unistd.h> // Needed for: usleep
 
 #include <SDL2/SDL.h>
 
@@ -10,7 +9,7 @@
 
 #define SCREEN_WIDTH 500
 #define SCREEN_HEIGHT 500
-#define TEX_HEIGHT 600
+#define TEX_HEIGHT 500
 #define TEX_WIDTH 500
 
 
@@ -46,7 +45,7 @@ void draw_line(SDL_Point p1, SDL_Point p2, std::vector<tuple> &vect,
     int x1 = p2.x;
     int y1 = p2.y;
 
-    int dx = abs(x1-x0);
+    int dx = abs(x1 - x0);
     int sx = x0 < x1 ? 1 : -1;
     int dy = abs(y1 - y0);
     int sy = y0 < y1 ? 1 : -1;
@@ -99,27 +98,67 @@ double random_angle(double alpha, double beta) {
 }
 
 
+void process_events(SDL_bool &running) {
+    SDL_Event event;
+
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+            running = SDL_FALSE;
+        }
+    }
+}
+
+
+void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
+				 std::vector<unsigned char> &pixels,
+				 std::vector<tuple> &data_vec, SDL_Point &start_pt,
+				 SDL_Point &end_pt, int &prev_tx) {
+
+	tuple temp;
+    double const PI = 3.145926;
+    double const LEFT_LIMIT = 7*PI / 6;
+    double const RIGHT_LIMIT = 11*PI / 6;
+
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+	SDL_RenderClear(renderer);
+
+	for (int i = 0; i < data_vec.size(); i++) {
+		temp = data_vec[i];
+
+		// Tx data point found... draw a line
+		if (temp.x == 0 && i > 0) {
+			double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
+			int distance = 150;
+			end_pt = polar_to_cart(distance, theta);
+			end_pt = cart_to_screen(end_pt);
+			draw_line(start_pt, end_pt, data_vec, pixels, prev_tx, i-1);
+			prev_tx = i;
+		}
+	}
+
+	SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
+	SDL_RenderCopy( renderer, texture, NULL, NULL);
+	SDL_RenderPresent(renderer);
+}
+
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <file-name>" << std::endl;
-        return -1;
+        return 1;
     }
-
-    // TODO: Switch to live streaming this data
 
     // Get the name of the data file to work with
     char* filename = argv[1];
 
     // Initialize important constants
-    double const PI = 3.145926;
     double const X_ORIGIN = SCREEN_WIDTH / 2;
     double const Y_ORIGIN = 0;
-    double const LEFT_LIMIT = 7*PI / 6;
-    double const RIGHT_LIMIT = 11*PI / 6;
 
     std::ifstream file(filename);
-    std::vector<tuple> vector_of_tuples;
+    std::vector<tuple> data_vec;
 
+    // TODO: Switch to live streaming this data!!
     // Put all file data into the vector
     if (file.is_open()) {
         tuple temp;
@@ -128,7 +167,7 @@ int main(int argc, char** argv) {
             file >> temp.x >> temp.y;
 
             if (file) {
-                vector_of_tuples.push_back(temp);
+                data_vec.push_back(temp);
             }
             else {
                 file.close();
@@ -141,7 +180,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    SDL_Window* window = SDL_CreateWindow("SDL2", SDL_WINDOWPOS_UNDEFINED,
+    SDL_Window* window = SDL_CreateWindow("Columbia Open-Source UltraSound",
+                                          SDL_WINDOWPOS_UNDEFINED,
                                           SDL_WINDOWPOS_UNDEFINED,
                                           600,
                                           600,
@@ -157,58 +197,33 @@ int main(int argc, char** argv) {
                                              TEX_WIDTH,
                                              TEX_HEIGHT);
 
-
-    SDL_bool running = SDL_TRUE;
-
     SDL_Point start_pt;
     start_pt.x = X_ORIGIN;
     start_pt.y = Y_ORIGIN;
 
     SDL_Point end_pt;
+    SDL_bool running = SDL_TRUE;
+
+    int prev_tx = 0;
+    std::vector<unsigned char> pixels(TEX_WIDTH * TEX_HEIGHT * 4, 0);
 
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderPresent(renderer);
-
-    tuple temp;
-    int prev_tx = 0;
-    SDL_Event event;
-    std::vector<unsigned char> pixels(TEX_WIDTH * TEX_HEIGHT * 4, 0);
 
     while (running) {
 
         // Begin performance timer
         const Uint64 start = SDL_GetPerformanceCounter();
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-        SDL_RenderClear(renderer);
+        // Process incoming events
+        process_events(running);
 
-        for (int i = 0; i < vector_of_tuples.size(); i++) {
-            temp = vector_of_tuples[i];
+        // Draw the screen
+		draw_screen(renderer, texture, pixels, data_vec,
+					start_pt, end_pt, prev_tx);
 
-            // Tx data point found! Draw a line
-            if (temp.x == 0 && i > 0) {
-                double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
-                int distance = 150;
-                end_pt = polar_to_cart(distance, theta);
-                end_pt = cart_to_screen(end_pt);
-                draw_line(start_pt, end_pt, vector_of_tuples, pixels, prev_tx, i);
-                prev_tx = i;
-            }
-
-        }
-
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                running = SDL_FALSE;
-            }
-        }
-
-        SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
-        SDL_RenderCopy( renderer, texture, NULL, NULL);
-        SDL_RenderPresent(renderer);
-
-        //              *** Performance Eval ***
+        //           *** Performance Eval ***
         const Uint64 end = SDL_GetPerformanceCounter();
         const static Uint64 freq = SDL_GetPerformanceFrequency();
         const double seconds = ( end - start ) / static_cast< double >( freq );
@@ -218,6 +233,7 @@ int main(int argc, char** argv) {
     if (renderer) {
         SDL_DestroyRenderer(renderer);
     }
+
     if (window) {
         SDL_DestroyWindow(window);
     }
