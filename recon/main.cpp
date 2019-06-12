@@ -13,9 +13,9 @@
 #define TEX_WIDTH 500
 
 
-struct tuple {
-    int x;
-    int y;
+struct data_pt {
+    int index;
+    int intensity;
 };
 
 
@@ -28,7 +28,7 @@ SDL_Point polar_to_cart(double r, double theta) {
 
 
 SDL_Point cart_to_screen(SDL_Point cart_pt) {
-    cart_pt.x = cart_pt.x + SCREEN_WIDTH/2;
+    cart_pt.x += SCREEN_WIDTH/2;
     cart_pt.y = SCREEN_HEIGHT/2 - cart_pt.y;
     return cart_pt;
 }
@@ -37,7 +37,7 @@ SDL_Point cart_to_screen(SDL_Point cart_pt) {
 /* Draw a line from the start point, `p1` to the end point, `p2`
  * Renders the line by drawing pixels from `p1` to `p2`
  */
-void draw_line(SDL_Point p1, SDL_Point p2, std::vector<tuple> &vect,
+void draw_line(SDL_Point p1, SDL_Point p2, std::vector<data_pt> &vect,
                std::vector<unsigned char> &pix, int s, int e) {
 
     int x0 = p1.x;
@@ -53,15 +53,15 @@ void draw_line(SDL_Point p1, SDL_Point p2, std::vector<tuple> &vect,
     int e2;
 
     int color;
-    tuple temp;
+    data_pt temp;
 
     while (1) {
         if (s <= e) {
             temp = vect[s++];
-            color = temp.y;
+            color = temp.intensity;
         }
         else {
-            color = 40;
+            color = 70;
         }
 
         unsigned int offset = (TEX_WIDTH * 4 * y0) + x0 * 4;
@@ -110,35 +110,35 @@ void process_events(SDL_bool &running) {
 
 
 void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
-				 std::vector<unsigned char> &pixels,
-				 std::vector<tuple> &data_vec, SDL_Point &start_pt,
-				 SDL_Point &end_pt, int &prev_tx) {
+                 std::vector<unsigned char> &pixels,
+                 std::vector<data_pt> &data_vec, SDL_Point &start_pt,
+                 SDL_Point &end_pt, int &prev_tx) {
 
-	tuple temp;
+    data_pt temp;
     double const PI = 3.145926;
     double const LEFT_LIMIT = 7*PI / 6;
     double const RIGHT_LIMIT = 11*PI / 6;
 
-	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-	SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+    SDL_RenderClear(renderer);
 
-	for (int i = 0; i < data_vec.size(); i++) {
-		temp = data_vec[i];
+    for (int i = 0; i < data_vec.size(); i++) {
+        temp = data_vec[i];
 
-		// Tx data point found... draw a line
-		if (temp.x == 0 && i > 0) {
-			double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
-			int distance = 150;
-			end_pt = polar_to_cart(distance, theta);
-			end_pt = cart_to_screen(end_pt);
-			draw_line(start_pt, end_pt, data_vec, pixels, prev_tx, i-1);
-			prev_tx = i;
-		}
-	}
+        // Tx data point found... draw a line
+        if (temp.index == 0 && i > 0) {
+            double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
+            int distance = 150;
+            end_pt = polar_to_cart(distance, theta);
+            end_pt = cart_to_screen(end_pt);
+            draw_line(start_pt, end_pt, data_vec, pixels, prev_tx, i-1);
+            prev_tx = i;
+        }
+    }
 
-	SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
-	SDL_RenderCopy( renderer, texture, NULL, NULL);
-	SDL_RenderPresent(renderer);
+    SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
+    SDL_RenderCopy( renderer, texture, NULL, NULL);
+    SDL_RenderPresent(renderer);
 }
 
 
@@ -156,15 +156,15 @@ int main(int argc, char** argv) {
     double const Y_ORIGIN = 0;
 
     std::ifstream file(filename);
-    std::vector<tuple> data_vec;
+    std::vector<data_pt> data_vec;
 
     // TODO: Switch to live streaming this data!!
     // Put all file data into the vector
     if (file.is_open()) {
-        tuple temp;
+        data_pt temp;
 
         while (file) {
-            file >> temp.x >> temp.y;
+            file >> temp.index >> temp.intensity;
 
             if (file) {
                 data_vec.push_back(temp);
@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
     }
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-        printf("SDL_Init failed: %s\n", SDL_GetError());
+        std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
         return 1;
     }
 
@@ -220,14 +220,18 @@ int main(int argc, char** argv) {
         process_events(running);
 
         // Draw the screen
-		draw_screen(renderer, texture, pixels, data_vec,
-					start_pt, end_pt, prev_tx);
+        draw_screen(renderer, texture, pixels, data_vec,
+                    start_pt, end_pt, prev_tx);
 
         //           *** Performance Eval ***
         const Uint64 end = SDL_GetPerformanceCounter();
         const static Uint64 freq = SDL_GetPerformanceFrequency();
         const double seconds = ( end - start ) / static_cast< double >( freq );
         std::cout << "Frame time: " << seconds * 1000.0 << "ms" << std::endl;
+    }
+
+    if (texture) {
+        SDL_DestroyTexture(texture);
     }
 
     if (renderer) {
