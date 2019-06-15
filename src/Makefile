@@ -5,8 +5,8 @@ CXX = g++
 INCLUDES = include
 
 # Compilation options:
-CFLAGS   = -std=c++17 -Wall $(INCLUDES)
-CXXFLAGS = -Wall $(INCLUDES)
+CFLAGS   = # -Wall $(INCLUDES)
+CXXFLAGS = -std=c++11 -Wall $(INCLUDES)
 
 # Linking options:
 LDFLAGS = -L lib
@@ -15,7 +15,7 @@ LDFLAGS = -L lib
 LDLIBS = -lSDL2 -lm
 
 
-target:
+target: safe_queue.h
 	$(CXX) main.cpp -o main $(LDLIBS)
 
 

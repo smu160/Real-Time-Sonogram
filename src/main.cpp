@@ -1,22 +1,121 @@
-#include <stdlib.h> // Needed for: srand, rand
-#include <iostream>
+#include <stdlib.h> // srand, rand
+#include <iostream> // cout, cerr
 #include <math.h>
 
-#include <SDL2/SDL.h>
-
-#include <fstream>
+#include <pthread.h>
 #include <vector>
+#include <mutex>
+#include "safe_queue.h"
+
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <cstring>
+
+#include <SDL2/SDL.h>
 
 #define SCREEN_WIDTH 500
 #define SCREEN_HEIGHT 500
 #define TEX_HEIGHT 500
 #define TEX_WIDTH 500
+#define PI 3.145926
+#define LEFT_LIMIT 7*PI / 6
+#define RIGHT_LIMIT 11*PI / 6
 
 
 struct data_pt {
     int index;
     int intensity;
 };
+
+
+void die(const char* msg) {
+    perror(msg);
+    exit(1);
+}
+
+
+void* run_server(void* queue_void) {
+    const char* socket_path = "./socket";
+    struct sockaddr_un addr;
+    char buf[4096];
+    int fd;
+    int client_sock;
+
+    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        die("socket error");
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
+    unlink(socket_path);
+
+    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+        die("bind error");
+    }
+
+    if (listen(fd, 1) == -1) {
+        die("listen error");
+    }
+
+    if ((client_sock = accept(fd, NULL, NULL)) == -1) {
+        die("accept error");
+    }
+
+    std::string cpp_str;;
+    ssize_t bytes_read;
+    std::string delimiter = " ";
+    SafeQueue<data_pt>& queue = *static_cast<SafeQueue<data_pt>*> (queue_void);
+
+    while ((bytes_read = recv(client_sock, buf, sizeof(buf)-1, 0)) > 0) {
+        buf[bytes_read] = '\0';
+        char* ptr = strtok(buf, "|");
+
+        while (ptr != NULL) {
+            cpp_str = std::string(ptr);
+            ptr = strtok(NULL, "|");
+
+            int mod = 0;
+            size_t pos = 0;
+
+            std::string token;
+            data_pt temp_data_pt;
+
+            while ((pos = cpp_str.find(delimiter)) != std::string::npos) {
+                token = cpp_str.substr(0, pos);
+
+                if (!token.empty()) {
+                    if (mod == 0) {
+                        temp_data_pt.index = stoi(token);
+                        mod++;
+                    }
+                    else if (mod == 1) {
+                        temp_data_pt.intensity = stoi(token);
+                        queue.push(temp_data_pt);
+                        mod++;
+                    }
+                }
+
+                cpp_str.erase(0, pos + delimiter.length());
+            }
+        }
+
+        if (bytes_read == -1) {
+            die("read");
+        }
+        else if (bytes_read == 0) {
+            std::cerr << "EOF" << std::endl;
+            close(client_sock);
+            break;
+        }
+
+    }
+
+    return NULL;
+}
 
 
 SDL_Point polar_to_cart(double r, double theta) {
@@ -114,66 +213,38 @@ void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
                  std::vector<data_pt> &data_vec, SDL_Point &start_pt,
                  SDL_Point &end_pt, int &prev_tx) {
 
-    data_pt temp;
-    double const PI = 3.145926;
-    double const LEFT_LIMIT = 7*PI / 6;
-    double const RIGHT_LIMIT = 11*PI / 6;
-
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
-    for (int i = 0; i < data_vec.size(); i++) {
-        temp = data_vec[i];
-
-        // Tx data point found... draw a line
-        if (temp.index == 0 && i > 0) {
-            double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
-            int distance = 150;
-            end_pt = polar_to_cart(distance, theta);
-            end_pt = cart_to_screen(end_pt);
-            draw_line(start_pt, end_pt, data_vec, pixels, prev_tx, i-1);
-            prev_tx = i;
-        }
-    }
+    double theta = random_angle(LEFT_LIMIT, RIGHT_LIMIT);
+    int distance = 150;
+    end_pt = polar_to_cart(distance, theta);
+    end_pt = cart_to_screen(end_pt);
+    draw_line(start_pt, end_pt, data_vec, pixels, 0, data_vec.size()-10);
 
     SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
-    SDL_RenderCopy( renderer, texture, NULL, NULL);
+    SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);
 }
 
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <file-name>" << std::endl;
-        return 1;
+
+    SafeQueue<data_pt> queue;
+    std::vector<data_pt> data_vec;
+
+    pthread_t server_thread;
+    int result = pthread_create(&server_thread, NULL, run_server, (void*)&queue);
+
+    if (result < 0) {
+        std::cerr << "Could not create server thread!" << std::endl;
     }
 
-    // Get the name of the data file to work with
-    char* filename = argv[1];
 
     // Initialize important constants
     double const X_ORIGIN = SCREEN_WIDTH / 2;
     double const Y_ORIGIN = 0;
 
-    std::ifstream file(filename);
-    std::vector<data_pt> data_vec;
-
-    // TODO: Switch to live streaming this data!!
-    // Put all file data into the vector
-    if (file.is_open()) {
-        data_pt temp;
-
-        while (file) {
-            file >> temp.index >> temp.intensity;
-
-            if (file) {
-                data_vec.push_back(temp);
-            }
-            else {
-                file.close();
-            }
-        }
-    }
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
@@ -211,33 +282,63 @@ int main(int argc, char** argv) {
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderPresent(renderer);
 
+    bool first_tx = false;
+    bool second_tx = false;
+
     while (running) {
 
         // Begin performance timer
-        const Uint64 start = SDL_GetPerformanceCounter();
+        // const Uint64 start = SDL_GetPerformanceCounter();
 
         // Process incoming events
         process_events(running);
 
-        // Draw the screen
-        draw_screen(renderer, texture, pixels, data_vec,
-                    start_pt, end_pt, prev_tx);
+        // Put queue items into data vector
+        while (1) {
+            data_pt temp_data_pt;
+            bool result = queue.pop_front(temp_data_pt);
 
-        //           *** Performance Eval ***
+            if (!result) {
+                break;
+            }
+
+            data_vec.push_back(temp_data_pt);
+
+            if (!first_tx && temp_data_pt.index == 0) {
+                first_tx = true;
+            }
+            else if (first_tx && temp_data_pt.index == 0) {
+                second_tx = true;
+                break;
+            }
+        }
+
+        // Draw the screen if both intervals were found
+        if (first_tx && second_tx) {
+            std::cout << data_vec.size() << std::endl;
+
+            draw_screen(renderer, texture, pixels, data_vec,
+                        start_pt, end_pt, prev_tx);
+
+            first_tx = false;
+            second_tx = false;
+            data_vec.clear();
+        }
+
+        /*           *** Performance Eval ***
         const Uint64 end = SDL_GetPerformanceCounter();
         const static Uint64 freq = SDL_GetPerformanceFrequency();
         const double seconds = ( end - start ) / static_cast< double >( freq );
         std::cout << "Frame time: " << seconds * 1000.0 << "ms" << std::endl;
+        */
     }
 
     if (texture) {
         SDL_DestroyTexture(texture);
     }
-
     if (renderer) {
         SDL_DestroyRenderer(renderer);
     }
-
     if (window) {
         SDL_DestroyWindow(window);
     }
