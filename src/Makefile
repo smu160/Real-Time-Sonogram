@@ -6,7 +6,7 @@ INCLUDES = include
 
 # Compilation options:
 CFLAGS   = # -Wall $(INCLUDES)
-CXXFLAGS = -std=c++11 -Wall $(INCLUDES)
+CXXFLAGS = -std=c++17 -Wall -O3 $(INCLUDES)
 
 # Linking options:
 LDFLAGS = -L lib
