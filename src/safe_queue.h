@@ -31,5 +31,10 @@ public:
         return true;
     }
 
+    int size() {
+        std::lock_guard<std::mutex> lock(m);
+        return q.size();
+    }
+
 };
 #endif
