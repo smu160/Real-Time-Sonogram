@@ -59,20 +59,45 @@ int start_server() {
 }
 
 
-// TODO: Implement the listener function and test it
-/*
- * Listens for a client and starts a handler thread
- */
-void* listener(void* fd) {
-    return NULL;
-}
-
-
 // TODO: Implement the handler function and test it
 /*
  * Handles the incoming data stream
  */
 void* handle_data_stream(void* client_sock_void) {
+    return NULL;
+}
+
+
+// TODO: Implement the listener function and test it
+/*
+ * Listens for a client and starts a handler thread
+ */
+void* listener(void* fd_void) {
+    std::cerr << "listener thread started..." << std::endl;
+
+    const int backlog = 1;
+    int fd = *(int*) fd_void;
+
+    if (listen(fd, backlog) == -1) {
+        die("listen failed");
+    }
+
+    while (1) {
+        int client_sock = accept(fd, NULL, NULL);
+
+        if (client_sock == -1) {
+            die("accept error");
+        }
+
+        pthread_t client_thread;
+        int result = pthread_create(&client_thread, NULL, handle_data_stream,
+                                    (void*)&client_sock);
+
+        if (result < 0) {
+            die("Could not create thread");
+        }
+    }
+
     return NULL;
 }
 
@@ -207,14 +232,6 @@ inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
             y0 += sy;
         }
     }
-}
-
-
-double random_angle(double alpha, double beta) {
-    double random = ((double) rand()) / (double) RAND_MAX;
-    double diff = beta - alpha;
-    double r = random * diff;
-    return alpha + r;
 }
 
 
