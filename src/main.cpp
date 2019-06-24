@@ -1,4 +1,10 @@
-#include <stdlib.h> // srand, rand
+//
+//  @author Saveliy Yusufov
+//  @date 9 June 2019
+//
+//  Copyright © 2019 Creative Machines Lab. All rights reserved.
+//
+
 #include <iostream> // cout, cerr
 #include <math.h>
 
@@ -26,9 +32,112 @@ struct tx_interval {
 };
 
 
+struct handle_st {
+    int* sock;
+    SafeQueue<tx_interval>* safe_q;
+};
+
+
 void die(const char* msg) {
     perror(msg);
     exit(1);
+}
+
+
+// TODO: Implement the handler function and test it
+/*
+ * Handles the incoming data stream
+ */
+void* stream_handler(void* handle_st_void) {
+    const int BUFF_SIZE = 65536; // 2^16
+    char buffer[BUFF_SIZE];
+    const char* interval_delimeter = "|";
+
+    handle_st my_handle_st = *(struct handle_st*) handle_st_void;
+    int& client_sock = *my_handle_st.sock;
+    SafeQueue<tx_interval>& queue = *my_handle_st.safe_q;
+
+    tx_interval temp_tx_interval;
+    ssize_t bytes_read;
+    std::cerr << "Reached... " << "client sock: " << client_sock << std::endl;
+
+    while ((bytes_read = recv(client_sock, buffer, sizeof(buffer)-1, 0)) > 0) {
+        buffer[bytes_read] = '\0';
+
+        char* token;
+        char* rest = buffer;
+        bool is_angle = false;
+
+        while ((token = strtok_r(rest, ",", &rest))) {
+            if (strcmp(token, interval_delimeter) == 0) {
+                is_angle = true;
+                queue.push(temp_tx_interval);
+                temp_tx_interval.intensities.clear();
+                SDL_Delay(1);
+                continue;
+            }
+
+            if (is_angle) {
+                temp_tx_interval.angle = std::stod(token);
+                is_angle = false;
+            }
+            else {
+                // TODO: figure out why std::stoi was causing errors
+                temp_tx_interval.intensities.push_back(std::stod(token));
+            }
+
+        }
+    }
+
+    if (bytes_read == -1) {
+        die("read");
+    }
+    else if (bytes_read == 0) {
+        std::cerr << "EOF" << std::endl;
+        close(client_sock);
+    }
+
+    close(client_sock);
+    return NULL;
+}
+
+
+// TODO: Implement the listener function and test it
+/*
+ * Listens for a client and starts a handler thread
+ */
+void* listener(void* handle_st_void) {
+    std::cerr << "listener thread started..." << std::endl;
+    const int backlog = 1;
+
+    handle_st handle_st_1 = *(struct handle_st*) handle_st_void;
+    int fd = *handle_st_1.sock;
+    SafeQueue<tx_interval>& queue = *handle_st_1.safe_q;
+
+    if (listen(fd, backlog) == -1) {
+        die("listen failed");
+    }
+
+    while (1) {
+        int client_sock = accept(fd, NULL, NULL);
+
+        if (client_sock == -1) {
+            die("accept error");
+        }
+
+        handle_st my_handle_st;
+        my_handle_st.sock = &client_sock;
+        my_handle_st.safe_q = &queue;
+
+        pthread_t t2;
+        int result = pthread_create(&t2, NULL, stream_handler, (void*)&my_handle_st);
+
+        if (result < 0) {
+            die("Thread could not be created...");
+        }
+    }
+
+    return NULL;
 }
 
 
@@ -36,7 +145,7 @@ void die(const char* msg) {
 /*
  * Initialize a server that listens for a single client on a Unix Domain Socket
  */
-int start_server() {
+void* start_server(void* queue_void) {
     const char* socket_path = "./socket";
     struct sockaddr_un addr;
     int fd;
@@ -55,113 +164,21 @@ int start_server() {
         die("bind error");
     }
 
-    return fd;
-}
-
-
-// TODO: Implement the handler function and test it
-/*
- * Handles the incoming data stream
- */
-void* handle_data_stream(void* client_sock_void) {
-    return NULL;
-}
-
-
-// TODO: Implement the listener function and test it
-/*
- * Listens for a client and starts a handler thread
- */
-void* listener(void* fd_void) {
-    std::cerr << "listener thread started..." << std::endl;
-
-    const int backlog = 1;
-    int fd = *(int*) fd_void;
-
-    if (listen(fd, backlog) == -1) {
-        die("listen failed");
-    }
-
-    while (1) {
-        int client_sock = accept(fd, NULL, NULL);
-
-        if (client_sock == -1) {
-            die("accept error");
-        }
-
-        pthread_t client_thread;
-        int result = pthread_create(&client_thread, NULL, handle_data_stream,
-                                    (void*)&client_sock);
-
-        if (result < 0) {
-            die("Could not create thread");
-        }
-    }
-
-    return NULL;
-}
-
-
-void* run_server(void* queue_void) {
-    int fd = start_server();
-
-    if (listen(fd, 1) == -1) {
-        die("listen error");
-    }
-
-    int client_sock;
-    if ((client_sock = accept(fd, NULL, NULL)) == -1) {
-        die("accept error");
-    }
-
     SafeQueue<tx_interval>& queue = *static_cast<SafeQueue<tx_interval>*> (queue_void);
 
-    char buffer[65536];
-    const char* interval_delimeter = "|";
+    handle_st my_handle_st;
+    my_handle_st.sock = &fd;
+    my_handle_st.safe_q = &queue;
 
-    tx_interval temp_tx_interval;
-    ssize_t bytes_read;
+    pthread_t t1;
+    int result = pthread_create(&t1, NULL, listener, (void*)&my_handle_st);
 
-    while ((bytes_read = recv(client_sock, buffer, sizeof(buffer)-1, 0)) > 0) {
-        buffer[bytes_read] = '\0';
-
-        char* token;
-        char* rest = buffer;
-
-        bool is_angle = false;
-
-        while ((token = strtok_r(rest, ",", &rest))) {
-            if (strcmp(token, interval_delimeter) == 0) {
-                is_angle = true;
-                queue.push(temp_tx_interval);
-                // std::cerr << queue.size() << std::endl;
-                temp_tx_interval.intensities.clear();
-                SDL_Delay(1);
-                continue;
-            }
-
-            if (is_angle) {
-                temp_tx_interval.angle = std::stod(token);
-                is_angle = false;
-            }
-            else {
-                // TODO: figure out why std::stoi was causing errors
-                temp_tx_interval.intensities.push_back(std::stod(token));
-            }
-
-        }
-
+    if (result < 0) {
+        die("Thread could not be created...");
     }
 
-    if (bytes_read == -1) {
-        die("read");
-    }
-    else if (bytes_read == 0) {
-        std::cerr << "EOF" << std::endl;
-        close(client_sock);
-    }
+    pthread_join(t1, NULL);
 
-    close(client_sock);
     return NULL;
 }
 
@@ -269,7 +286,7 @@ int main(int argc, char** argv) {
     SafeQueue<tx_interval> queue;
 
     pthread_t server_thread;
-    int result = pthread_create(&server_thread, NULL, run_server, (void*)&queue);
+    int result = pthread_create(&server_thread, NULL, start_server, (void*)&queue);
 
     if (result < 0) {
         std::cerr << "Could not create server thread!" << std::endl;
