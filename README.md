@@ -51,3 +51,5 @@ in the `Imaging/recon` directory
 ```Bash
 ./main test_data.csv
 ```
+
+[Source](https://medium.com/@edkins.sarah/set-up-sdl2-on-your-mac-without-xcode-6b0c33b723f7)
