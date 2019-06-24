@@ -109,8 +109,8 @@ void* run_server(void* queue_void) {
             if (strcmp(token, interval_delimeter) == 0) {
                 is_angle = true;
                 queue.push(temp_tx_interval);
-                std::cerr << queue.size() << std::endl;
-                memset(&temp_tx_interval, 0, sizeof(temp_tx_interval));
+                // std::cerr << queue.size() << std::endl;
+                temp_tx_interval.intensities.clear();
                 SDL_Delay(1);
                 continue;
             }
