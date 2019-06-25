@@ -6,7 +6,7 @@ INCLUDES = include
 
 # Compilation options:
 CFLAGS   = # -Wall $(INCLUDES)
-CXXFLAGS = -std=c++17 -Wall -O3 $(INCLUDES)
+CXXFLAGS = -std=c++11 -Wall -O3 # $(INCLUDES)
 
 # Linking options:
 LDFLAGS = -L lib
@@ -16,7 +16,7 @@ LDLIBS = -lSDL2 -lm
 
 
 target: safe_queue.h
-	$(CXX) main.cpp -o main $(LDLIBS)
+	$(CXX) $(CXXFLAGS) main.cpp -o main $(LDLIBS)
 
 
 .PHONY: clean
