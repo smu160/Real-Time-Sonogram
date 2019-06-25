@@ -1,6 +1,6 @@
 //
-//  @author Saveliy Yusufov
-//  @date 9 June 2019
+//  Author: Saveliy Yusufov
+//  Date: 9 June 2019
 //
 //  Copyright © 2019 Creative Machines Lab. All rights reserved.
 //
@@ -59,7 +59,7 @@ void* stream_handler(void* handle_st_void) {
 
     tx_interval temp_tx_interval;
     ssize_t bytes_read;
-    std::cerr << "Reached... " << "client sock: " << client_sock << std::endl;
+    std::cerr << "Receiving stream on client socket: " << client_sock << std::endl;
 
     while ((bytes_read = recv(client_sock, buffer, sizeof(buffer)-1, 0)) > 0) {
         buffer[bytes_read] = '\0';
@@ -73,7 +73,7 @@ void* stream_handler(void* handle_st_void) {
                 is_angle = true;
                 queue.push(temp_tx_interval);
                 temp_tx_interval.intensities.clear();
-                SDL_Delay(1);
+                // SDL_Delay(1);
                 continue;
             }
 
@@ -202,7 +202,7 @@ inline SDL_Point cart_to_screen(SDL_Point cart_pt) {
  * Renders the line by drawing pixels from `p1` to `p2`
  */
 inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
-                      std::vector<unsigned char> &pix) {
+                      std::vector<unsigned char> &pix, std::mutex& m) {
 
     int x0 = p1.x;
     int y0 = p1.y;
@@ -219,6 +219,7 @@ inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
     int color;
     int i = 0;
 
+    m.lock();
     while (1) {
         if (i < tx_itval.intensities.size()) {
             color = tx_itval.intensities[i++];
@@ -249,6 +250,7 @@ inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
             y0 += sy;
         }
     }
+    m.unlock();
 }
 
 
@@ -263,20 +265,65 @@ void process_events(SDL_bool &running) {
 }
 
 
-void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
-                 std::vector<unsigned char> &pixels,
-                 tx_interval& tx_itval, SDL_Point &start_pt) {
+struct dl_args {
+    std::vector<unsigned char>* pixels;
+    SafeQueue<tx_interval>* queue;
+    std::mutex* m;
+};
 
+
+// Helper function to draw as many lines as possible
+void* draw_lines(void* dl_args_void) {
+    dl_args* draw_lines_args = (struct dl_args*) dl_args_void;
+    std::vector<unsigned char>& pixels = *draw_lines_args->pixels;
+    SafeQueue<tx_interval>& queue = *draw_lines_args->queue;
+    std::mutex& m = *draw_lines_args->m;
+
+    double const X_ORIGIN = SCREEN_WIDTH / 2;
+    double const Y_ORIGIN = 0;
+    SDL_Point start_pt;
+    start_pt.x = X_ORIGIN;
+    start_pt.y = Y_ORIGIN;
+
+    while (1) {
+        tx_interval temp_tx_interval;
+
+        // Put queue items into data vector
+        bool result = queue.pop_front(temp_tx_interval);
+        if (!result) {
+            continue;
+        }
+
+        int distance = 150;
+        SDL_Point end_pt = polar_to_cart(distance, temp_tx_interval.angle);
+        end_pt = cart_to_screen(end_pt);
+
+        // m.lock();
+        draw_line(start_pt, end_pt, temp_tx_interval, pixels, m);
+        // m.unlock();
+    }
+
+    return NULL;
+}
+
+void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
+                 std::vector<unsigned char> &pixels, std::mutex& m) {
+
+    // Clear screen
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
 
-    // double theta = random_angle(7*M_PI/6, 11*M_PI/6);
+    /*
     int distance = 150;
     SDL_Point end_pt = polar_to_cart(distance, tx_itval.angle);
     end_pt = cart_to_screen(end_pt);
     draw_line(start_pt, end_pt, tx_itval, pixels);
+    */
 
+    m.lock();
     SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
+    m.unlock();
+
     SDL_RenderCopy(renderer, texture, NULL, NULL);
     SDL_RenderPresent(renderer);
 }
@@ -294,9 +341,8 @@ int main(int argc, char** argv) {
     }
 
     // Initialize important constants
-    double const X_ORIGIN = SCREEN_WIDTH / 2;
-    double const Y_ORIGIN = 0;
-
+    // double const X_ORIGIN = SCREEN_WIDTH / 2;
+    // double const Y_ORIGIN = 0;
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
@@ -320,17 +366,26 @@ int main(int argc, char** argv) {
                                              TEX_WIDTH,
                                              TEX_HEIGHT);
 
-    SDL_Point start_pt;
+    /*SDL_Point start_pt;
     start_pt.x = X_ORIGIN;
-    start_pt.y = Y_ORIGIN;
+    start_pt.y = Y_ORIGIN;*/
 
     SDL_bool running = SDL_TRUE;
 
+    std::mutex m;
     std::vector<unsigned char> pixels(TEX_WIDTH * TEX_HEIGHT * 4, 0);
 
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderPresent(renderer);
+
+    dl_args dl_args_void;
+    dl_args_void.pixels = &pixels;
+    dl_args_void.queue = &queue;
+    dl_args_void.m = &m;
+
+    pthread_t t3;
+    result = pthread_create(&t3, NULL, draw_lines, (void*)&dl_args_void);
 
     while (running) {
 
@@ -349,8 +404,7 @@ int main(int argc, char** argv) {
         }
 
         // Draw the screen if both intervals were found
-        draw_screen(renderer, texture, pixels, temp_tx_itval, start_pt);
-
+        draw_screen(renderer, texture, pixels, m);
 
         /*           *** Performance Eval ***
         const Uint64 end = SDL_GetPerformanceCounter();
