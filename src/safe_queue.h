@@ -1,3 +1,10 @@
+//
+//  Author: Saveliy Yusufov
+//  Date: 12 June 2019
+//
+//  Copyright © 2019 Creative Machines Lab. All rights reserved.
+//
+
 #ifndef SAFE_QUEUE_H
 #define SAFE_QUEUE_H
 
