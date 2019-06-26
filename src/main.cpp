@@ -44,7 +44,8 @@ void die(const char* msg) {
 }
 
 
-// TODO: Implement the handler function and test it
+// TODO: Move all this server crap to a separate file
+
 /*
  * Handles the incoming data stream
  */
@@ -102,7 +103,6 @@ void* stream_handler(void* handle_st_void) {
 }
 
 
-// TODO: Implement the listener function and test it
 /*
  * Listens for a client and starts a handler thread
  */
@@ -141,7 +141,6 @@ void* listener(void* handle_st_void) {
 }
 
 
-// TODO: Write up this function and test it
 /*
  * Initialize a server that listens for a single client on a Unix Domain Socket
  */
@@ -285,22 +284,24 @@ void* draw_lines(void* dl_args_void) {
     start_pt.x = X_ORIGIN;
     start_pt.y = Y_ORIGIN;
 
+    bool got_interval;
+
     while (1) {
         tx_interval temp_tx_interval;
 
         // Put queue items into data vector
-        bool result = queue.pop_front(temp_tx_interval);
-        if (!result) {
+        got_interval = queue.pop_front(temp_tx_interval);
+        if (!got_interval) {
             continue;
         }
 
+        // TODO: distance should be based on length of interval
         int distance = 150;
+
         SDL_Point end_pt = polar_to_cart(distance, temp_tx_interval.angle);
         end_pt = cart_to_screen(end_pt);
 
-        // m.lock();
         draw_line(start_pt, end_pt, temp_tx_interval, pixels, m);
-        // m.unlock();
     }
 
     return NULL;
@@ -312,13 +313,6 @@ void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
     // Clear screen
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(renderer);
-
-    /*
-    int distance = 150;
-    SDL_Point end_pt = polar_to_cart(distance, tx_itval.angle);
-    end_pt = cart_to_screen(end_pt);
-    draw_line(start_pt, end_pt, tx_itval, pixels);
-    */
 
     m.lock();
     SDL_UpdateTexture(texture, NULL, &pixels[0], TEX_WIDTH*4);
@@ -332,17 +326,13 @@ void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
 int main(int argc, char** argv) {
     SafeQueue<tx_interval> queue;
 
-    pthread_t server_thread;
-    int result = pthread_create(&server_thread, NULL, start_server, (void*)&queue);
+    pthread_t t0;
+    int result = pthread_create(&t0, NULL, start_server, (void*)&queue);
 
     if (result < 0) {
         std::cerr << "Could not create server thread!" << std::endl;
         return 1;
     }
-
-    // Initialize important constants
-    // double const X_ORIGIN = SCREEN_WIDTH / 2;
-    // double const Y_ORIGIN = 0;
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
@@ -365,10 +355,6 @@ int main(int argc, char** argv) {
                                              SDL_TEXTUREACCESS_STREAMING,
                                              TEX_WIDTH,
                                              TEX_HEIGHT);
-
-    /*SDL_Point start_pt;
-    start_pt.x = X_ORIGIN;
-    start_pt.y = Y_ORIGIN;*/
 
     SDL_bool running = SDL_TRUE;
 
@@ -395,15 +381,6 @@ int main(int argc, char** argv) {
         // Process incoming events
         process_events(running);
 
-        tx_interval temp_tx_itval;
-
-        // Put queue items into data vector
-        bool result = queue.pop_front(temp_tx_itval);
-        if (!result) {
-            continue;
-        }
-
-        // Draw the screen if both intervals were found
         draw_screen(renderer, texture, pixels, m);
 
         /*           *** Performance Eval ***
@@ -413,6 +390,8 @@ int main(int argc, char** argv) {
         std::cout << "Frame time: " << seconds * 1000.0 << "ms" << std::endl;
         */
     }
+
+    // TODO: server threads need to be cleaned up here
 
     if (texture) {
         SDL_DestroyTexture(texture);
