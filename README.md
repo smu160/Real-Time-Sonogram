@@ -1,12 +1,10 @@
 # Imaging
 
-All of the code and tests implemented by the computer science team from Summer
-2019 and onwards.
-
+<img src="https://media.giphy.com/media/QWpzbiFb53vySnBG0J/giphy.gif"/>
 
 ### Prerequisites
 
-* SDL2
+[SDL2](https://www.libsdl.org/index.php)
 
 
 ### Installing
@@ -29,7 +27,7 @@ brew install sdl2
 ```
 into:
 ```Bash
-Imaging/recon/include
+Imaging/src/include
 ```
 
 4. Copy the directory:
@@ -38,18 +36,19 @@ Imaging/recon/include
 ```
 into the directory:
 ```Bash
-Imaging/recon/lib
+Imaging/src/lib
 ```
 
 5. Build the entire project by running:
 ```Bash
 make all
 ```
-in the `Imaging/recon` directory
+in the `Imaging/src` directory
 
-6. Finally, run it with the provided test data:
-```Bash
-./main test_data.csv
-```
 
-[Source](https://medium.com/@edkins.sarah/set-up-sdl2-on-your-mac-without-xcode-6b0c33b723f7)
+[Setting up SDL2 on mac without Xcode](https://medium.com/@edkins.sarah/set-up-sdl2-on-your-mac-without-xcode-6b0c33b723f7)
+
+
+#### Testing
+
+Instructions coming soon
