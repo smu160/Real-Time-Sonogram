@@ -1,6 +1,6 @@
 # Imaging
 
-<img src="https://media.giphy.com/media/QWpzbiFb53vySnBG0J/giphy.gif"/>
+<img src="https://media.giphy.com/media/KAwax2fd4wegVYKEgT/giphy.gif"/>
 
 ### Prerequisites
 
