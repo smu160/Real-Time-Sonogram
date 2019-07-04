@@ -11,12 +11,9 @@
 #include <pthread.h>
 #include <vector>
 #include <mutex>
-#include "safe_queue.h"
 
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <stdio.h>
-#include <unistd.h>
+#include "server.cpp"
+#include "safe_queue.h"
 
 #include <SDL2/SDL.h>
 
@@ -26,163 +23,14 @@
 #define TEX_WIDTH 500
 
 
-struct tx_interval {
-    double angle;
-    std::vector<int> intensities;
+struct dl_args {
+    std::vector<unsigned char>* pixels;
+    SafeQueue<tx_interval>* queue;
+    std::mutex* m;
 };
 
 
-struct handle_st {
-    int* sock;
-    SafeQueue<tx_interval>* safe_q;
-};
-
-
-void die(const char* msg) {
-    perror(msg);
-    exit(1);
-}
-
-
-// TODO: Move all this server crap to a separate file
-
-/*
- * Handles the incoming data stream
- */
-void* stream_handler(void* handle_st_void) {
-    const int BUFF_SIZE = 65536; // 2^16
-    char buffer[BUFF_SIZE];
-    const char* interval_delimeter = "|";
-
-    handle_st my_handle_st = *(struct handle_st*) handle_st_void;
-    int& client_sock = *my_handle_st.sock;
-    SafeQueue<tx_interval>& queue = *my_handle_st.safe_q;
-
-    tx_interval temp_tx_interval;
-    ssize_t bytes_read;
-    std::cerr << "Receiving stream on client socket: " << client_sock << std::endl;
-
-    while ((bytes_read = recv(client_sock, buffer, sizeof(buffer)-1, 0)) > 0) {
-        buffer[bytes_read] = '\0';
-
-        char* token;
-        char* rest = buffer;
-        bool is_angle = false;
-
-        while ((token = strtok_r(rest, ",", &rest))) {
-            if (strcmp(token, interval_delimeter) == 0) {
-                is_angle = true;
-                queue.push(temp_tx_interval);
-                temp_tx_interval.intensities.clear();
-                // SDL_Delay(1);
-                continue;
-            }
-
-            if (is_angle) {
-                temp_tx_interval.angle = std::stod(token);
-                is_angle = false;
-            }
-            else {
-                // TODO: figure out why std::stoi was causing errors
-                temp_tx_interval.intensities.push_back(std::stod(token));
-            }
-
-        }
-    }
-
-    if (bytes_read == -1) {
-        die("read");
-    }
-    else if (bytes_read == 0) {
-        std::cerr << "EOF" << std::endl;
-        close(client_sock);
-    }
-
-    close(client_sock);
-    return NULL;
-}
-
-
-/*
- * Listens for a client and starts a handler thread
- */
-void* listener(void* handle_st_void) {
-    std::cerr << "listener thread started..." << std::endl;
-    const int backlog = 1;
-
-    handle_st handle_st_1 = *(struct handle_st*) handle_st_void;
-    int fd = *handle_st_1.sock;
-    SafeQueue<tx_interval>& queue = *handle_st_1.safe_q;
-
-    if (listen(fd, backlog) == -1) {
-        die("listen failed");
-    }
-
-    while (1) {
-        int client_sock = accept(fd, NULL, NULL);
-
-        if (client_sock == -1) {
-            die("accept error");
-        }
-
-        handle_st my_handle_st;
-        my_handle_st.sock = &client_sock;
-        my_handle_st.safe_q = &queue;
-
-        pthread_t t2;
-        int result = pthread_create(&t2, NULL, stream_handler, (void*)&my_handle_st);
-
-        if (result < 0) {
-            die("Thread could not be created...");
-        }
-    }
-
-    return NULL;
-}
-
-
-/*
- * Initialize a server that listens for a single client on a Unix Domain Socket
- */
-void* start_server(void* queue_void) {
-    const char* socket_path = "./socket";
-    struct sockaddr_un addr;
-    int fd;
-
-    if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        die("socket error");
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-
-    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path)-1);
-    unlink(socket_path);
-
-    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        die("bind error");
-    }
-
-    SafeQueue<tx_interval>& queue = *static_cast<SafeQueue<tx_interval>*> (queue_void);
-
-    handle_st my_handle_st;
-    my_handle_st.sock = &fd;
-    my_handle_st.safe_q = &queue;
-
-    pthread_t t1;
-    int result = pthread_create(&t1, NULL, listener, (void*)&my_handle_st);
-
-    if (result < 0) {
-        die("Thread could not be created...");
-    }
-
-    pthread_join(t1, NULL);
-
-    return NULL;
-}
-
-
-inline SDL_Point polar_to_cart(double r, double theta) {
+static inline SDL_Point polar_to_cart(double r, double theta) {
     SDL_Point point;
     point.x = r * cos(theta);
     point.y = r * sin(theta);
@@ -190,18 +38,27 @@ inline SDL_Point polar_to_cart(double r, double theta) {
 }
 
 
-inline SDL_Point cart_to_screen(SDL_Point cart_pt) {
-    cart_pt.x += SCREEN_WIDTH/2;
-    cart_pt.y = SCREEN_HEIGHT/2 - cart_pt.y;
+static inline SDL_Point cart_to_screen(SDL_Point cart_pt) {
+    cart_pt.x += SCREEN_WIDTH * 0.5;
+    cart_pt.y = SCREEN_HEIGHT*0.5 - cart_pt.y;
     return cart_pt;
 }
 
 
-/* Draw a line from the start point, `p1` to the end point, `p2`
+/*
+ * Draw a line from the start point, `p1` to the end point, `p2`
  * Renders the line by drawing pixels from `p1` to `p2`
+ *
+ * Colors each voxel according to the value that was mapped to it.
+ * For high values close to 255, the color of the voxel would black and opaque.
+ * For low values close to 0, the voxel would be white and transparent.
+ * Voxels representing values in between 0 and 255 are in greyscale and
+ * have transparency corresponding to its value. (The higher the value, the more
+ * opaque rhe voxel.) This allows one to see through the cube of voxels to
+ * view the surface.
  */
-inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
-                      std::vector<unsigned char> &pix, std::mutex& m) {
+static inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
+                      std::vector<unsigned char>& pix, std::mutex& m) {
 
     int x0 = p1.x;
     int y0 = p1.y;
@@ -212,29 +69,46 @@ inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
     int sx = x0 < x1 ? 1 : -1;
     int dy = abs(y1 - y0);
     int sy = y0 < y1 ? 1 : -1;
-    int err = (dx > dy ? dx : -dy)/2;
+    int err = (dx > dy ? dx : -dy) * 0.5;
     int e2;
 
     int color;
+    int alpha;
+    int value;
     int i = 0;
 
     m.lock();
+
     while (1) {
         if (i < tx_itval.intensities.size()) {
-            color = tx_itval.intensities[i++];
+            value = tx_itval.intensities[i++];
         }
         else {
-            color = 70;
+            value = 0;
         }
 
         unsigned int offset = (TEX_WIDTH * 4 * y0) + x0 * 4;
 
-        pix[offset] = color; // b
-        pix[offset+1] = color; // g
-        pix[offset+2] = color; // r
-        pix[offset+3] = SDL_ALPHA_OPAQUE;
+        if (value <= 25) {
+            color = 0;
+            alpha = SDL_ALPHA_TRANSPARENT;
+        }
+        else if (value > 199) {
+            color = 255;
+            alpha = SDL_ALPHA_OPAQUE;
+        }
+        else {
+            color = value;
+            alpha = value;
+        }
+
+        pix[offset] = color;    // b
+        pix[offset+1] = color;  // g
+        pix[offset+2] = color;  // r
+        pix[offset+3] = alpha;
 
         if (x0==x1 && y0==y1) {
+            m.unlock();
             break;
         }
 
@@ -249,7 +123,6 @@ inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
             y0 += sy;
         }
     }
-    m.unlock();
 }
 
 
@@ -264,19 +137,12 @@ void process_events(SDL_bool &running) {
 }
 
 
-struct dl_args {
-    std::vector<unsigned char>* pixels;
-    SafeQueue<tx_interval>* queue;
-    std::mutex* m;
-};
-
-
 // Helper function to draw as many lines as possible
 void* draw_lines(void* dl_args_void) {
     dl_args* draw_lines_args = (struct dl_args*) dl_args_void;
-    std::vector<unsigned char>& pixels = *draw_lines_args->pixels;
-    SafeQueue<tx_interval>& queue = *draw_lines_args->queue;
-    std::mutex& m = *draw_lines_args->m;
+    std::vector<unsigned char>* pixels = draw_lines_args->pixels;
+    SafeQueue<tx_interval>* queue = draw_lines_args->queue;
+    std::mutex* m = draw_lines_args->m;
 
     double const X_ORIGIN = SCREEN_WIDTH / 2;
     double const Y_ORIGIN = 0;
@@ -285,30 +151,35 @@ void* draw_lines(void* dl_args_void) {
     start_pt.y = Y_ORIGIN;
 
     bool got_interval;
+    int distance = 150;
+    tx_interval temp_tx_interval;
 
     while (1) {
-        tx_interval temp_tx_interval;
 
         // Put queue items into data vector
-        got_interval = queue.pop_front(temp_tx_interval);
+        got_interval = (*queue).pop_front(temp_tx_interval);
         if (!got_interval) {
             continue;
         }
 
-        // TODO: distance should be based on length of interval
-        int distance = 150;
+        if (temp_tx_interval.angle < 3.67 || temp_tx_interval.angle > 5.76) {
+            continue;
+        }
 
+        // TODO: distance should be based on length of interval
         SDL_Point end_pt = polar_to_cart(distance, temp_tx_interval.angle);
+
         end_pt = cart_to_screen(end_pt);
 
-        draw_line(start_pt, end_pt, temp_tx_interval, pixels, m);
+        draw_line(start_pt, end_pt, temp_tx_interval, *pixels, *m);
     }
 
     return NULL;
 }
 
+
 void draw_screen(SDL_Renderer* renderer, SDL_Texture* texture,
-                 std::vector<unsigned char> &pixels, std::mutex& m) {
+                 std::vector<unsigned char>& pixels, std::mutex& m) {
 
     // Clear screen
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
