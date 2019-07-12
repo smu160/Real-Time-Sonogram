@@ -1,8 +1,8 @@
 //
-//  Author: Saveliy Yusufov
-//  Date: 12 June 2019
+//  Wrapper to make queue thread-safe
 //
-//  Copyright © 2019 Creative Machines Lab. All rights reserved.
+//  Copyright © 2019 Saveliy Yusufov <sy2685@columbia.edu>
+//
 //
 
 #ifndef SAFE_QUEUE_H

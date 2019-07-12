@@ -1,8 +1,8 @@
 //
-//  Author: Saveliy Yusufov
-//  Date: 9 June 2019
+//  Live sonogram rendering
 //
-//  Copyright © 2019 Creative Machines Lab. All rights reserved.
+//  Copyright © 2019 Saveliy Yusufov <sy2685@columbia.edu>
+//
 //
 
 #include <iostream> // cout, cerr
@@ -48,14 +48,6 @@ static inline SDL_Point cart_to_screen(SDL_Point cart_pt) {
 /*
  * Draw a line from the start point, `p1` to the end point, `p2`
  * Renders the line by drawing pixels from `p1` to `p2`
- *
- * Colors each voxel according to the value that was mapped to it.
- * For high values close to 255, the color of the voxel would black and opaque.
- * For low values close to 0, the voxel would be white and transparent.
- * Voxels representing values in between 0 and 255 are in greyscale and
- * have transparency corresponding to its value. (The higher the value, the more
- * opaque rhe voxel.) This allows one to see through the cube of voxels to
- * view the surface.
  */
 static inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
                       std::vector<unsigned char>& pix, std::mutex& m) {
@@ -89,6 +81,9 @@ static inline void draw_line(SDL_Point p1, SDL_Point p2, tx_interval& tx_itval,
 
         unsigned int offset = (TEX_WIDTH * 4 * y0) + x0 * 4;
 
+        // For LOW voltage, the pixel is black and transparent
+        // For HIGH voltage, the pixel is white and opaque
+        // Otherwise, the pixel's color & transparency is the voltage value
         if (value <= 25) {
             color = 0;
             alpha = SDL_ALPHA_TRANSPARENT;
@@ -246,20 +241,10 @@ int main(int argc, char** argv) {
 
     while (running) {
 
-        // Begin performance timer
-        // const Uint64 start = SDL_GetPerformanceCounter();
-
         // Process incoming events
         process_events(running);
 
         draw_screen(renderer, texture, pixels, m);
-
-        /*           *** Performance Eval ***
-        const Uint64 end = SDL_GetPerformanceCounter();
-        const static Uint64 freq = SDL_GetPerformanceFrequency();
-        const double seconds = ( end - start ) / static_cast< double >( freq );
-        std::cout << "Frame time: " << seconds * 1000.0 << "ms" << std::endl;
-        */
     }
 
     // TODO: server threads need to be cleaned up here

@@ -1,3 +1,10 @@
+//
+//  Server to receive live stream of ADC and piezo angle data
+//
+//  Copyright © 2019 Saveliy Yusufov <sy2685@columbia.edu>
+//
+//
+
 #include <iostream>
 #include <vector>
 
