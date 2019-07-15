@@ -95,8 +95,6 @@ void* listener(void* handle_st_void) {
     int fd = *handle_st_1.sock;
     SafeQueue<tx_interval>& queue = *handle_st_1.safe_q;
 
-    std::cerr << fd << std::endl;
-
     if (listen(fd, backlog) < 0) {
         die("listen failed");
     }
