@@ -1,4 +1,4 @@
-# Real-Time-Image_Rend
+# Real-Time-Sonogram
 
 <img src="https://media.giphy.com/media/KAwax2fd4wegVYKEgT/giphy.gif"/>
 
@@ -27,7 +27,7 @@ brew install sdl2
 ```
 into:
 ```Bash
-Real-Time-Image_Rend/src/include
+Real-Time-Sonogram/src/include
 ```
 
 4. Copy the directory:
@@ -36,12 +36,12 @@ Real-Time-Image_Rend/src/include
 ```
 into the directory:
 ```Bash
-Real-Time-Image_Rend/src/lib
+Real-Time-Sonogram/src/lib
 ```
 
 
 ### Try it out!
-Change into the `Real-Time-Image_Rend/src` directory and build the sonogram
+Change into the `Real-Time-Sonogram/src` directory and build the sonogram
 renderer and its corresponding server:
 
 ```sh
@@ -57,7 +57,7 @@ Run the renderer & server, which will listen on port 11112:
 Run a test client (in a different terminal):
 
 ```sh
-cd Real-Time-Image_Rend/test
+cd Real-Time-Sonogram/test
 while true; do cat new_protoc_test.csv; done | nc localhost 11112
 ```
 
@@ -68,3 +68,7 @@ of this page.
 The SDL2 installation instructions are based on:
 [Setting up SDL2 on mac without Xcode](https://medium.com/@edkins.sarah/set-up-sdl2-on-your-mac-without-xcode-6b0c33b723f7)
 
+
+## License
+
+Copyright © 2019 Saveliy Yusufov
